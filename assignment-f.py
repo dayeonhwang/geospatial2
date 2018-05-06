@@ -24,6 +24,20 @@ def emission(link_pt, probe_pt, params):
     tmp = 1/(math.sqrt(2*math.pi)*params.sigma)
     return tmp*math.exp(-0.5*(link_pt[4]/params.sigma)**2)
 
+def compute_curve_dist(link, idx):
+    if (len(link.shapeInfo) > 2):
+        if (link.curvatureInfo[0][0]== ''):
+            curve_dist = compute_great_circle_distance(link.shapeInfo[0][0],
+                link.shapeInfo[0][1], link.shapeInfo[idx][0],
+                link.shapeInfo[idx][1])
+        else:
+            curve_dist = get_dist_curvature(link.curvatureInfo, idx)
+    elif (idx == 0):
+        curve_dist = 0
+    else:
+        curve_dist = link.length
+    return curve_dist
+
 def transition(probe1, probe2, candidate1, candidate2, link1, link2, params):
     # x_t,i: lat/lon pt on link1 nearest probe1 (shapeIndex1, minLat1, minLon1)
     # x_t+1,j: lat/lon pt on link2 nearest probe2 (shapeIndex2, minLat2, minLon2)
@@ -34,28 +48,17 @@ def transition(probe1, probe2, candidate1, candidate2, link1, link2, params):
     notFound = False
     print ("entire cand1", candidate1)
     print ("entire cand2", candidate2)
-    print ("candidate", candidate1[1])
     print ("link 1 curvature", link1.curvatureInfo)
+    print ("link 2 curvature", link2.curvatureInfo)
     shape_idx1 = candidate1[1]
     shape_idx2 = candidate2[1]
-    print ("shape idx", shape_idx1)
     print ("shape info 1", link1.shapeInfo)
-    print ("shape info 2", link1.shapeInfo)
-    if (len(link1.shapeInfo) > 2):
-        curve_dist1 = get_dist_curvature(link1.curvatureInfo, shape_idx1)
-    elif (shape_idx1 == 0):
-        curve_dist1 = 0
-    else:
-        curve_dist1 = link1.length
+    print ("shape info 2", link2.shapeInfo)
 
-    if (len(link2.shapeInfo) > 2):
-        curve_dist2 = get_dist_curvature(link2.curvatureInfo, shape_idx2)
-    elif (shape_idx2 == 0):
-        curve_dist2 = 0
-    else:
-        curve_dist2 = link2.length
+    curve_dist1 = compute_curve_dist(link1, shape_idx1)
+    curve_dist2 = compute_curve_dist(link2, shape_idx2)
 
-    # Check if its along the same link
+    # Check if it is along the same link
     if (link1.linkPVID == link2.linkPVID):
         dist2 = math.fabs(curve_dist1 - curve_dist2)
     else:
@@ -83,7 +86,7 @@ def MapMatchHMM(params, trajectory, links):
     # Create index dictionary for road links in score matrix
     linkIdx = {}
     idx = 0 # running index for dictionary
-    for t in range(T):
+    for t in range(T-1):
         R, R_links = get_candidate_nodes(trajectory[t], links)
         L, L_links= get_candidate_nodes(trajectory[t+1], links)
         if len(R) == 0:
@@ -150,5 +153,6 @@ if __name__ == "__main__":
     probe1 = traj[probe1.sampleID]
     params = Params(4.07, 8.0)
     print ("starting HMM")
-    hmm = MapMatchHMM(params, probe1, link_obj[0:100])
+    scores, sequences = MapMatchHMM(params, probe1, link_obj[0:100])
     print (hmm)
+    print (sequences)
