@@ -1,6 +1,7 @@
 import math
 import re
 import csv
+import copy
 from datetime import datetime
 from geopy.distance import geodesic
 from geopy.distance import great_circle
@@ -39,11 +40,26 @@ def compute_great_circle_distance(lat1, lon1, lat2, lon2):
     return great_circle(p1,p2).meters
 
 #get candidate link nodes that are within 200 meters distance of probe point
-def get_candidate_nodes(probe,link_lst):
+def get_candidate_nodes(probe,link_lst, prev_lst, first = True):
     candidates = []
     links = []
-    for i in range(0, len(link_lst)):
-        link = link_lst[i]
+
+    # Only take the links that are connected/are the current set of links
+    if not first:
+        linkPVIDs = []
+        refNodeIDs = []
+        nrefNodeIDs = []
+        for l in prev_lst:
+            linkPVIDs.append(l.linkPVID)
+            refNodeIDs.append(l.refNodeID)
+            nrefNodeIDs.append(l.nrefNodeID)
+        possible_links = [x for x in link_lst if (x.refNodeID in nrefNodeIDs)
+            or (x.nrefNodeID in refNodeIDs) or (x.linkPVID in linkPVIDs)]
+    else:
+        possible_links = copy.deepcopy(link_lst)
+
+    for i in range(0, len(possible_links)):
+        link = possible_links[i]
         distances = []
         min_shape_idx = 0
         min_shape_idx2 = 0

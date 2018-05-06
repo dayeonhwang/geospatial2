@@ -1,4 +1,5 @@
 import numpy as np
+import copy
 import math
 from helpers6 import *
 
@@ -25,17 +26,18 @@ def emission(link_pt, probe_pt, params):
     return tmp*math.exp(-0.5*(link_pt[4]/params.sigma)**2)
 
 def compute_curve_dist(link, idx):
-    if (len(link.shapeInfo) > 2):
+    if (idx == 0):
+        curve_dist = 0
+    elif (idx == len(link.shapeInfo)-1):
+        curve_dist = link.length
+    else:
+        # If no curvature info, assume straight line
         if (link.curvatureInfo[0][0]== ''):
             curve_dist = compute_great_circle_distance(link.shapeInfo[0][0],
                 link.shapeInfo[0][1], link.shapeInfo[idx][0],
                 link.shapeInfo[idx][1])
         else:
             curve_dist = get_dist_curvature(link.curvatureInfo, idx)
-    elif (idx == 0):
-        curve_dist = 0
-    else:
-        curve_dist = link.length
     return curve_dist
 
 def transition(probe1, probe2, candidate1, candidate2, link1, link2, params):
@@ -46,14 +48,14 @@ def transition(probe1, probe2, candidate1, candidate2, link1, link2, params):
     # shapeIndex1, minLat1, minLon1 = get_closest_shape(probe1,link1)
     # shapeIndex2, minLat2, minLon2 = get_closest_shape(probe2,link2)
     notFound = False
-    print ("entire cand1", candidate1)
-    print ("entire cand2", candidate2)
-    print ("link 1 curvature", link1.curvatureInfo)
-    print ("link 2 curvature", link2.curvatureInfo)
+    # print ("entire cand1", candidate1)
+    # print ("entire cand2", candidate2)
+    # print ("link 1 curvature", link1.curvatureInfo)
+    # print ("link 2 curvature", link2.curvatureInfo)
     shape_idx1 = candidate1[1]
     shape_idx2 = candidate2[1]
-    print ("shape info 1", link1.shapeInfo)
-    print ("shape info 2", link2.shapeInfo)
+    # print ("shape info 1", link1.shapeInfo)
+    # print ("shape info 2", link2.shapeInfo)
 
     curve_dist1 = compute_curve_dist(link1, shape_idx1)
     curve_dist2 = compute_curve_dist(link2, shape_idx2)
@@ -74,7 +76,9 @@ def transition(probe1, probe2, candidate1, candidate2, link1, link2, params):
         return 0
     else:
         dist = math.fabs(dist1 - dist2)
+        print("Distance", dist)
         beta = (1/math.log(2))*dist
+        print("Beta", beta)
         return (1/params.beta)*math.exp(-dist/params.beta)
 
 def MapMatchHMM(params, trajectory, links):
@@ -86,9 +90,25 @@ def MapMatchHMM(params, trajectory, links):
     # Create index dictionary for road links in score matrix
     linkIdx = {}
     idx = 0 # running index for dictionary
+    R = []
+    R_links = []
     for t in range(T-1):
-        R, R_links = get_candidate_nodes(trajectory[t], links)
-        L, L_links= get_candidate_nodes(trajectory[t+1], links)
+        if t == 0:
+            R, R_links = get_candidate_nodes(trajectory[t], links, [])
+            L, L_links = get_candidate_nodes(trajectory[t+1], links, R_links, False)
+        else:
+            L, L_links = get_candidate_nodes(trajectory[t+1], links, R_links, False)
+
+        print ("Step", t)
+        R_links_IDs = []
+        L_links_IDs = []
+        for x in R_links:
+            R_links_IDs.append(x.linkPVID)
+        for x in L_links:
+            L_links_IDs.append(x.linkPVID)
+        print ("R_links", R_links_IDs)
+        print ("L_links", L_links_IDs)
+
         if len(R) == 0:
             print ("no candidates")
         for l in range(0, len(L)):
@@ -97,26 +117,31 @@ def MapMatchHMM(params, trajectory, links):
             fProb = np.zeros(len(R))
             for r in range(0, len(R)):
                 # Initialize scores
-                if t == 0:
-                    entry = np.zeros(T)
+                if t == 0 and l == 0:
+                    entry = np.zeros(T-1)
                     entry[t] = emission(R[r], trajectory[t], params)
                     score.append(entry)
                     linkIdx[R_links[r].linkPVID] = idx
                     idx += 1
                 tProb[r] = transition(trajectory[t], trajectory[t+1], R[r], L[l], R_links[r], L_links[l], params)
+                # print ("Link Index", linkIdx)
                 fProb[r] = tProb[r] * score[linkIdx[R_links[r].linkPVID]][t]
             maxr, maxri = np.max(fProb), np.argmax(fProb)
             sequence[t] = R_links[maxri].linkPVID
             finalScore = emission(L[l], trajectory[t+1], params)*maxr
             # Add state to the score matrix
             if (L_links[l].linkPVID not in linkIdx):
-                entry = np.zeros(T)
+                entry = np.zeros(T-1)
                 entry[t] = finalScore
                 score.append(entry)
                 linkIdx[L_links[l].linkPVID] = idx
                 idx += 1
             else:
                 score[linkIdx[L_links[l].linkPVID]][t] = finalScore
+
+        # Transfer next candidates to current candidates
+        R = copy.deepcopy(L)
+        R_links = copy.deepcopy(L_links)
     return score, sequence
 
 if __name__ == "__main__":
@@ -131,7 +156,7 @@ if __name__ == "__main__":
 
     # make each probe row as object of class probe
     probe_obj = []
-    for i in range (0, 5):
+    for i in range (1000, 1005):
         curr_obj = process_probe_point(probe_rows[i])
         probe_obj.append(curr_obj)
     print ("done making probe obj")
@@ -153,6 +178,6 @@ if __name__ == "__main__":
     probe1 = traj[probe1.sampleID]
     params = Params(4.07, 8.0)
     print ("starting HMM")
-    scores, sequences = MapMatchHMM(params, probe1, link_obj[0:100])
-    print (hmm)
+    scores, sequences = MapMatchHMM(params, probe1, link_obj)
+    print (scores)
     print (sequences)
