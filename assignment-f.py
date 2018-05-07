@@ -2,6 +2,8 @@ import numpy as np
 import copy
 import math
 from helpers6 import *
+from pprint import pprint
+from collections import deque
 
 def getLinkID(linkIdx, idx):
     for key, value in linkIdx.items():
@@ -86,11 +88,13 @@ def transition(probe1, probe2, candidate1, candidate2, link1, link2, params):
             if (link1.directionOfTravel == 'T'):
                 return 0
             dist2 = (link1.length - curve_dist1) + curve_dist2
+            direction = 'F'
         elif link1.refNodeID == link2.nrefNodeID:
             # traveling link2 -> link1
             if (link1.directionOfTravel = 'F'):
                 return 0
             dist2 = (link2.length - curve_dist2) + curve_dist1
+            direction = 'T'
         else:
             notFound = True
 
@@ -102,6 +106,48 @@ def transition(probe1, probe2, candidate1, candidate2, link1, link2, params):
         beta = (1/math.log(2))*dist
         # print("Beta", beta)
         return (1/params.beta)*math.exp(-dist/params.beta)
+
+def find_direction(link1, link2, candidate1, candidate2):
+    # F = from ref node, T = towards ref node
+    shape_idx1 = candidate1[1]
+    shape_idx2 = candidate2[1]
+
+    curve_dist1 = compute_curve_dist(link1, shape_idx1)
+    curve_dist2 = compute_curve_dist(link2, shape_idx2)
+
+    if (link1.linkPVID == link2.linkPVID):
+        raw_dist = curve_dist2 - curve_dist1
+        if raw_dist < 0:
+            direction = 'T'
+            dist2 = raw_dist * -1
+        else:
+            direction = 'F'
+            dist2 = raw_dist
+
+    else:
+        if link1.nrefNodeID == link2.refNodeID:
+            # traveling link1 -> link2
+            dist2 = (link1.length - curve_dist1) + curve_dist2
+            direction = 'F'
+        elif link1.refNodeID == link2.nrefNodeID:
+            # traveling link2 -> link1
+            dist2 = (link2.length - curve_dist2) + curve_dist1
+            direction = 'T'
+        else:
+            notFound = True
+            direction = 'F'
+
+    return direction
+
+def find_dist_from_ref(probe, link):
+    # distance from the reference node to the map-matched probe point location on the link in decimal meters
+    ref = (link.shapeInfo).split('|')[0].split('/')
+    dist = compute_great_circle_distance(probe.latitude, probe.longitude, lat2, lon2)
+    return dist
+
+def find_dist_from_link(probe,link):
+    # perpendicular distance from the map-matched probe point location on the link to the probe point in decimal meters
+
 
 def MapMatchHMM(params, trajectory, links):
     T = len(trajectory)
@@ -192,12 +238,12 @@ def MapMatchHMM(params, trajectory, links):
 if __name__ == "__main__":
     probe_csv = open("Partition6467ProbePoints.csv", "r")
     link_csv = open("Partition6467LinkData.csv", "r")
+    output_csv = open("Partition6467MatchedPoints.csv", "w")
     probe_reader = csv.reader(probe_csv)
     link_reader = csv.reader(link_csv)
+    writer = csv.writer(output_csv,lineterminator='\n')
     probe_rows = list(probe_reader)
     link_rows = list(link_reader)
-
-    #candidate_nodes = get_candidate_nodes(probe_pt, link_rows)
 
     # make each probe row as object of class probe
     probe_obj = []
@@ -213,16 +259,30 @@ if __name__ == "__main__":
         link_obj.append(curr_obj)
     print ("done making link_obj")
 
-    unsorted_probe_obj = probe_obj
-    probe_obj.sort(key=lambda x: x.dateTime)
+    #unsorted_probe_obj = copy.deepcopy(probe_obj)
+    #probe_obj.sort(key=lambda x: x.dateTime)
+    first_probe = probe_obj[0]
     print ("sorting dataTime")
-    probe1 = probe_obj[0]
-    traj = get_trajectory(probe_obj)
-    #traj.sort(key=lambda x: x.dateTime)
+
+    traj = make_trajectory(probe_obj) # dict of probe IDs and probe pts
     print ("got traj")
-    probe1 = traj[probe1.sampleID]
-    params = Params(4.07, 8.0)
-    print ("starting HMM")
-    sequence, final_score = MapMatchHMM(params, probe1, link_obj)
-    print (sequence)
-    print (final_score)
+    #TODO: sort probe pts by time
+
+    probe_ids = deque() # queue list of all probe IDs
+    for k in traj.keys():
+        probe_ids.append(k)
+    print ("probe ids:", probe_ids)
+
+    while (probe_ids):
+        curr_id = probe_ids[0] # next probe ID to process
+        curr_probe = [p for p in probe_obj if p.sampleID==curr_id][0] # finding probe with next probe ID
+        probe_ids.popleft()
+        print ("current probe being processed: ")
+        pprint(vars(curr_probe))
+
+        probe_traj = traj[curr_probe.sampleID] # all probe pts with same ID
+        params = Params(4.07, 4)
+        print ("starting HMM with", curr_id)
+        scores, sequences = MapMatchHMM(params, probe_traj, link_obj)
+        print ("scores", scores)
+        print ("sequences", sequences)
