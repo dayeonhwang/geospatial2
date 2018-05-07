@@ -24,7 +24,7 @@ def get_closest_shape(probe, link):
 
 def get_dist_curvature(curvatureInfo, idx):
     curvature = curvatureInfo[idx-1]
-    print (curvature[0])
+    # print (curvature[0])
     dist = float(curvature[0])
     return dist
 
@@ -72,29 +72,27 @@ def transition(probe1, probe2, candidate1, candidate2, link1, link2, params):
         raw_dist = curve_dist2 - curve_dist1
         if (raw_dist < 0):
             # To the reference node
-            if (link1.directionOfTravel == 'F'):
-                return 0
+            # if (link1.directionOfTravel == 'F'):
+            #     return 0
             raw_dist *= -1
-        else:
+        # else:
             # From the reference node
-            if (link1.directionOfTravel == 'T'):
-                return 0
+            # if (link1.directionOfTravel == 'T'):
+            #     return 0
 
         dist2 = raw_dist
 
     else:
         if link1.nrefNodeID == link2.refNodeID:
             # traveling link1 -> link2
-            if (link1.directionOfTravel == 'T'):
-                return 0
+            # if (link1.directionOfTravel == 'T'):
+            #     return 0
             dist2 = (link1.length - curve_dist1) + curve_dist2
-            direction = 'F'
         elif link1.refNodeID == link2.nrefNodeID:
             # traveling link2 -> link1
-            if (link1.directionOfTravel = 'F'):
-                return 0
+            # if (link1.directionOfTravel == 'F'):
+            #     return 0
             dist2 = (link2.length - curve_dist2) + curve_dist1
-            direction = 'T'
         else:
             notFound = True
 
@@ -145,7 +143,7 @@ def find_dist_from_ref(probe, link):
     dist = compute_great_circle_distance(probe.latitude, probe.longitude, lat2, lon2)
     return dist
 
-def find_dist_from_link(probe,link):
+# def find_dist_from_link(probe,link):
     # perpendicular distance from the map-matched probe point location on the link to the probe point in decimal meters
 
 
@@ -168,19 +166,20 @@ def MapMatchHMM(params, trajectory, links):
         else:
             L, L_links = get_candidate_nodes(trajectory[t+1], links, R_links, False)
 
-        print ("Step", t)
+        # print ("Step", t)
         R_links_IDs = []
         L_links_IDs = []
         for x in R_links:
             R_links_IDs.append(x.linkPVID)
         for x in L_links:
             L_links_IDs.append(x.linkPVID)
-        print ("R_links", R_links_IDs)
-        print ("L_links", L_links_IDs)
+        # print ("R_links", R_links_IDs)
+        # print ("L_links", L_links_IDs)
 
 
         if len(R) == 0:
             print ("no candidates")
+            return [], 0
         for l in range(0, len(L)):
             eProb = emission(L[l], trajectory[t+1], params)
             tProb = np.zeros(len(R))
@@ -223,8 +222,8 @@ def MapMatchHMM(params, trajectory, links):
         R_links = copy.deepcopy(L_links)
 
     # Follow backpointers to resolve sequence
-    print("Score Matrix", score)
-    print ("Backpointers", backpointers)
+    # print("Score Matrix", score)
+    # print ("Backpointers", backpointers)
     sequence = []
     sequence_idx = []
     sequence_idx.append(np.argmax(score[:, T-1]))
@@ -236,6 +235,7 @@ def MapMatchHMM(params, trajectory, links):
     return list(reversed(sequence)), np.max(score[:, T-1])
 
 if __name__ == "__main__":
+    print ("Start Time", datetime.now().time())
     probe_csv = open("Partition6467ProbePoints.csv", "r")
     link_csv = open("Partition6467LinkData.csv", "r")
     output_csv = open("Partition6467MatchedPoints.csv", "w")
@@ -247,7 +247,7 @@ if __name__ == "__main__":
 
     # make each probe row as object of class probe
     probe_obj = []
-    for i in range (1000, 1003):
+    for i in range (0, 5000):
         curr_obj = process_probe_point(probe_rows[i])
         probe_obj.append(curr_obj)
     print ("done making probe obj")
@@ -281,8 +281,10 @@ if __name__ == "__main__":
         pprint(vars(curr_probe))
 
         probe_traj = traj[curr_probe.sampleID] # all probe pts with same ID
-        params = Params(4.07, 4)
+        params = Params(4.07, 10)
         print ("starting HMM with", curr_id)
-        scores, sequences = MapMatchHMM(params, probe_traj, link_obj)
-        print ("scores", scores)
-        print ("sequences", sequences)
+        sequence, prob = MapMatchHMM(params, probe_traj, link_obj)
+        print ("sequence", sequence)
+        print ("probability", prob)
+
+    print ("End Time", datetime.now().time())
