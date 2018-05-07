@@ -4,6 +4,7 @@ import math
 from helpers6 import *
 from pprint import pprint
 from collections import deque
+import time
 
 def getLinkID(linkIdx, idx):
     for key, value in linkIdx.items():
@@ -28,15 +29,21 @@ def get_dist_curvature(curvatureInfo, idx):
     dist = float(curvature[0])
     return dist
 
-def emission(link_pt, probe_pt, params):
+def emission(candidate, probe_pt, params):
     tmp = 1/(math.sqrt(2*math.pi)*params.sigma)
-    return tmp*math.exp(-0.5*(link_pt[4]/params.sigma)**2)
+    return tmp*math.exp(-0.5*(candidate[2]/params.sigma)**2)
 
-def compute_curve_dist(link, idx):
+def compute_curve_dist(link, candidate):
+    # Compute route distance from reference node of link
+    idx = candidate[1]
+    delta = candidate[3]
+    side = candidate[4]
     if (idx == 0):
-        curve_dist = 0
+        curve_dist = 0 + delta
     elif (idx == len(link.shapeInfo)-1):
-        curve_dist = link.length
+        curve_dist = link.length - delta
+        if (curve_dist < 0):
+            curve_dist = 0
     else:
         # If no curvature info, assume straight line
         if (link.curvatureInfo[0][0]== ''):
@@ -45,6 +52,15 @@ def compute_curve_dist(link, idx):
                 link.shapeInfo[idx][1])
         else:
             curve_dist = get_dist_curvature(link.curvatureInfo, idx)
+        if (side == 1):
+            curve_dist += delta
+        else:
+            curve_dist -= delta
+            if (curve_dist < 0):
+                if (idx > 1):
+                    curve_dist = get_dist_curvature(link.curvatureInfo, idx-1)
+                else:
+                    curve_dist = 0
     return curve_dist
 
 def transition(probe1, probe2, candidate1, candidate2, link1, link2, params):
@@ -59,13 +75,11 @@ def transition(probe1, probe2, candidate1, candidate2, link1, link2, params):
     # print ("entire cand2", candidate2)
     # print ("link 1 curvature", link1.curvatureInfo)
     # print ("link 2 curvature", link2.curvatureInfo)
-    shape_idx1 = candidate1[1]
-    shape_idx2 = candidate2[1]
     # print ("shape info 1", link1.shapeInfo)
     # print ("shape info 2", link2.shapeInfo)
 
-    curve_dist1 = compute_curve_dist(link1, shape_idx1)
-    curve_dist2 = compute_curve_dist(link2, shape_idx2)
+    curve_dist1 = compute_curve_dist(link1, candidate1)
+    curve_dist2 = compute_curve_dist(link2, candidate2)
 
     # Check if it is along the same link
     if (link1.linkPVID == link2.linkPVID):
@@ -106,11 +120,11 @@ def transition(probe1, probe2, candidate1, candidate2, link1, link2, params):
         # print("Beta", beta)
         return (1/params.beta)*math.exp(-dist/params.beta)
 
-def find_direction(link1, link2, shape_idx1, shape_idx2):
+def find_direction(link1, link2, candidate1, candidate2):
     # F = from ref node, T = towards ref node
 
-    curve_dist1 = compute_curve_dist(link1, shape_idx1)
-    curve_dist2 = compute_curve_dist(link2, shape_idx2)
+    curve_dist1 = compute_curve_dist(link1, candidate1)
+    curve_dist2 = compute_curve_dist(link2, candidate2)
 
     if (link1.linkPVID == link2.linkPVID):
         raw_dist = curve_dist2 - curve_dist1
@@ -136,49 +150,16 @@ def find_direction(link1, link2, shape_idx1, shape_idx2):
 
     return direction
 
-def find_dist_from_ref_from_link(probe,matched_link):
+def find_matched_params(probe,matched_link):
     # distance from the reference node to the map-matched probe point location on the link in decimal meters
 
-    link = matched_link
-    distances = []
-    min_shape_idx = 0
-    min_shape_idx2 = 0
-    min_distance = 200
+    links = [matched_link]
+    candidates, link_results = get_candidate_nodes(probe, links, [], True, 500)
+    candidate = candidates[0]
+    distFromRef = compute_curve_dist(matched_link, candidate)
+    distFromLink = candidate[2]
 
-    # Find shape point closest to probe point
-    for j in range(0, len(link.shapeInfo)):
-        ref = link.shapeInfo[j][:]
-        ref_lat = float(ref[0])
-        ref_lon = float(ref[1])
-        distances.append(compute_great_circle_distance(probe.latitude,probe.longitude,ref_lat,ref_lon))
-        if (distances[j] < min_distance):
-            min_distance = distances[j]
-            min_shape_idx = j
-
-    # Compute closest point on link to probe point
-    # Find second closest shape point
-    if (min_shape_idx > 0 and min_shape_idx < len(link.shapeInfo)-1):
-        if (distances[min_shape_idx - 1] < distances[min_shape_idx + 1]):
-            min_shape_idx2 = min_shape_idx - 1
-        else:
-            min_shape_idx2 = min_shape_idx + 1
-    elif (min_shape_idx == 0):
-        min_shape_idx2 = min_shape_idx + 1
-    elif (min_shape_idx == len(link.shapeInfo)):
-        min_shape_idx2 = min_shape_idx - 1
-    # Use Heron's formula to compute area
-    pt1 = link.shapeInfo[min_shape_idx][:]
-    pt2 = link.shapeInfo[min_shape_idx2][:]
-    dist1p = compute_great_circle_distance(probe.latitude, probe.longitude, float(pt1[0]), float(pt1[1]))
-    dist2p = compute_great_circle_distance(probe.latitude, probe.longitude, float(pt2[0]), float(pt2[1]))
-    dist12 = compute_great_circle_distance(pt1[0],pt1[1],pt2[0],pt2[1])
-    S = (dist1p + dist2p + dist12)/2.0
-    A = math.sqrt(S*(S-dist1p)*(S-dist2p)*(S-dist12))
-    # Calculate altitude from probe point using computed compute_great_circle_distance
-    height = 2*A/dist12
-    shape_idx = min_shape_idx
-
-    return compute_curve_dist(link, shape_idx), height, shape_idx
+    return distFromRef, distFromLink, candidate
 
 def MapMatchHMM(params, trajectory, links):
     min_dist = 200
@@ -203,12 +184,12 @@ def MapMatchHMM(params, trajectory, links):
             L, L_links = get_candidate_nodes(trajectory[t+1], links, R_links, False)
 
         # print ("Step", t)
-        R_links_IDs = []
-        L_links_IDs = []
-        for x in R_links:
-            R_links_IDs.append(x.linkPVID)
-        for x in L_links:
-            L_links_IDs.append(x.linkPVID)
+        # R_links_IDs = []
+        # L_links_IDs = []
+        # for x in R_links:
+        #     R_links_IDs.append(x.linkPVID)
+        # for x in L_links:
+        #     L_links_IDs.append(x.linkPVID)
         # print ("R_links", R_links_IDs)
         # print ("L_links", L_links_IDs)
 
@@ -219,7 +200,7 @@ def MapMatchHMM(params, trajectory, links):
             print ("no candidates, trying", min_dist)
             R, R_links = get_candidate_nodes(trajectory[t], links, [], True, min_dist)
             if (min_dist > 500):
-                break
+                return [], 0
         for l in range(0, len(L)):
             eProb = emission(L[l], trajectory[t+1], params)
             tProb = np.zeros(len(R))
@@ -242,7 +223,7 @@ def MapMatchHMM(params, trajectory, links):
                 # print("Score", score[linkIdx[R_links[r].linkPVID],t])
                 # print("fProb", fProb[r])
             maxr, maxri = np.max(fProb), np.argmax(fProb)
-            finalScore = emission(L[l], trajectory[t+1], params)*maxr
+            finalScore = eProb*maxr
             # print("Max score", maxr)
             # Add state to the score and backpointer matrix
             if (L_links[l].linkPVID not in linkIdx):
@@ -281,7 +262,7 @@ if __name__ == "__main__":
     print ("Start Time", datetime.now().time())
     probe_csv = open("Partition6467ProbePoints.csv", "r")
     link_csv = open("Partition6467LinkData.csv", "r")
-    output_csv = open("Partition6467MatchedPoints.csv", "w")
+    output_csv = open("Partition6467MatchedPoints.csv", "a")
     probe_reader = csv.reader(probe_csv)
     link_reader = csv.reader(link_csv)
     writer = csv.writer(output_csv)
@@ -295,7 +276,7 @@ if __name__ == "__main__":
         probe_obj.append(curr_obj)
     print ("done making probe obj")
 
-    # make each link row as object of class link
+    #make each link row as object of class link
     link_obj = []
     for i in range (0, len(link_rows)):
         curr_obj = process_link(link_rows[i])
@@ -326,7 +307,7 @@ if __name__ == "__main__":
         print ("starting HMM with", curr_id)
         sequence, prob = MapMatchHMM(params, probe_traj, link_obj)
         print ("Sequence")
-        shape_idx1 = 0
+        candidate1 = []
         distFromRef1 = 0.0
         distFromLink1 = 0.0
         for i in range (0, len(sequence)):
@@ -339,26 +320,34 @@ if __name__ == "__main__":
 
             curr_probe = probe_traj[i]
             if (i == 0):
-                distFromRef1, distFromLink1, shape_idx1 = find_dist_from_ref_from_link(curr_probe,link1) # current link
+                distFromRef1, distFromLink1, candidate1 = find_matched_params(curr_probe,link1) # current link
             if (i != len(sequence)-1):
                 # Don't need to compute parameters for next link when already at the end
-                distFromRef2, distFromLink2, shape_idx2 = find_dist_from_ref_from_link(curr_probe,link2) # next link
+                distFromRef2, distFromLink2, candidate2 = find_matched_params(curr_probe,link2) # next link
 
             if (sequence[i].directionOfTravel != 'B'):
                 curr_probe.direction = sequence[i].directionOfTravel
             else:
-                if (i+1 == len(sequence))
+                if (i+1 == len(sequence)):
                     curr_probe.direction = probe_traj[i-1].direction
                 else:
-                    curr_probe.direction = find_direction(link1, link2, shape_idx1, shape_idx2)
+                    curr_probe.direction = find_direction(link1, link2, candidate1, candidate2)
 
             curr_probe.linkPVID = link1.linkPVID
             curr_probe.distFromRef = distFromRef1
             curr_probe.distFromLink = distFromLink1
             # Update the current probe parameters
-            shape_idx1 = shape_idx2
+            candidate1 = candidate2
             distFromRef1 = distFromRef2
             distFromLink1 = distFromLink2
             probe_traj[i] = curr_probe
+            row = []
+            for attr, value in curr_probe.__dict__.items():
+                if (attr == 'dateTime'):
+                    time_str = time.strftime('%m/%d/%Y  %I:%M:%S %p', time.gmtime(value/1000.0))
+                    row.append(time_str)
+                else:
+                    row.append(value)
+            writer.writerow(row)
         print ("Probability", prob)
     print ("End Time", datetime.now().time())

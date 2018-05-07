@@ -31,6 +31,8 @@ class Link:
         self.shapeInfo = shapeInfo
         self.curvatureInfo = curvatureInfo
         self.slopeInfo = slopeInfo
+        self.derivedSlope = 0.0
+        self.percentDiff = 0.0
 
 class Params:
     def __init__(self, beta, sigma):
@@ -83,7 +85,8 @@ def get_candidate_nodes(probe,link_lst, prev_lst, first = True, min_dist_thresh 
 
         # Compute closest point on link to probe point
         if (within_range):
-            # Find second closest shape point
+            # Find second closest shape point, assuming its either the one before
+            # or after closest one
             if (min_shape_idx > 0 and min_shape_idx < len(link.shapeInfo)-1):
                 if (distances[min_shape_idx - 1] < distances[min_shape_idx + 1]):
                     min_shape_idx2 = min_shape_idx - 1
@@ -103,7 +106,16 @@ def get_candidate_nodes(probe,link_lst, prev_lst, first = True, min_dist_thresh 
             A = math.sqrt(S*(S-dist1p)*(S-dist2p)*(S-dist12))
             # Calculate altitude from probe point using computed compute_great_circle_distance
             height = 2*A/dist12
-            candidate = [link.linkPVID, min_shape_idx, pt1[0], pt1[1], height]
+            # Calculate the distance from actual point on the road to closest shape point
+            # using Pythagorean Theorem
+            delta = math.sqrt((dist1p**2) - (height**2))
+            if (min_shape_idx2 < min_shape_idx):
+                # Reference node side
+                shape_side = 0
+            else:
+                # Nonreference node side
+                shape_side = 1
+            candidate = [link.linkPVID, min_shape_idx, height, delta, shape_side]
             candidates.append(candidate)
             links.append(link)
 
@@ -140,7 +152,8 @@ def process_link(link):
     for i in range(0,len(slope_lst)):
         slope = slope_lst[i].split('/')
         slopeInfo.append(slope)
-    link_obj = Link(int(link[0]),int(link[1]),int(link[2]),float(link[3]),link[5],shapeInfo,curvatureInfo,slopeInfo)
+    link_obj = Link(int(link[0]),int(link[1]),int(link[2]),float(link[3]),link[5],
+        shapeInfo,curvatureInfo,slopeInfo)
     return link_obj
 
 # compute slope between probe points
