@@ -5,6 +5,11 @@ from helpers6 import *
 from pprint import pprint
 from collections import deque
 
+def getLinkID(linkIdx, idx):
+    for key, value in linkIdx.items():
+        if value == idx:
+            return key
+
 def get_closest_shape(probe, link):
     shape = link.shapeInfo
     minDist = minLat = minLon = 0
@@ -64,14 +69,7 @@ def transition(probe1, probe2, candidate1, candidate2, link1, link2, params):
 
     # Check if it is along the same link
     if (link1.linkPVID == link2.linkPVID):
-        dist2 = math.fabs(curve_dist1 - curve_dist2)
-        raw_dist = curve_dist2 - curve_dist1
-        if raw_dist < 0:
-            direction = 'T'
-            dist2 = raw_dist * -1
-        else:
-            direction = 'F'
-            dist2 = raw_dist
+        dist2 = math.fabs(curve_dist2 - curve_dist1)
 
     else:
         if link1.nrefNodeID == link2.refNodeID:
@@ -84,15 +82,14 @@ def transition(probe1, probe2, candidate1, candidate2, link1, link2, params):
             direction = 'T'
         else:
             notFound = True
-            direction = 'F'
 
     if notFound:
         return 0
     else:
         dist = math.fabs(dist1 - dist2)
-        print("Distance", dist)
+        # print("Distance", dist)
         beta = (1/math.log(2))*dist
-        print("Beta", beta)
+        # print("Beta", beta)
         return (1/params.beta)*math.exp(-dist/params.beta)
 
 def find_direction(link1, link2, candidate1, candidate2):
@@ -140,23 +137,16 @@ def find_dist_from_link(probe,link):
 def MapMatchHMM(params, trajectory, links):
     T = len(trajectory)
     # Create matrix that stores joint probability up to that state (states x time)
-    score = []
-    sequence = np.zeros(T-1)
+    score = np.empty((0,T), float)
+    #score = []
     backpointers = np.empty((0,T), int)
     # Create index dictionary for road links in score matrix
     linkIdx = {}
-    idx = 0 # running index for dictionary
-    # Sequence of directions
-    direction = [[]]
-    # Sequence of distFromRef
-    distFromRef = [[]]
-    # Sequence of distFromLink
-    distFromLink = [[]]
 
     # Initialize current candidates list
     R = []
     R_links = []
-    for t in range(T-1):
+    for t in range(0,T-1):
         if t == 0:
             R, R_links = get_candidate_nodes(trajectory[t], links, [])
             L, L_links = get_candidate_nodes(trajectory[t+1], links, R_links, False)
@@ -181,35 +171,54 @@ def MapMatchHMM(params, trajectory, links):
             tProb = np.zeros(len(R))
             fProb = np.zeros(len(R))
             for r in range(0, len(R)):
-                # Initialize scores
+                # Initialize scores and backpointer states
                 if t == 0 and l == 0:
-                    entry = np.zeros(T-1)
-                    entry[t] = emission(R[r], trajectory[t], params)
-                    score.append(entry)
-                    linkIdx[R_links[r].linkPVID] = idx
-                    idx += 1
+                    score_entry = np.zeros((1,T), float)
+                    score_entry[0,t] = emission(R[r], trajectory[t], params)
+                    score = np.append(score, score_entry, axis = 0)
+                    back_entry = np.zeros((1,T), int)
+                    backpointers = np.append(backpointers, back_entry, axis = 0)
+                    linkIdx[R_links[r].linkPVID] = (np.shape(score)[0])-1
 
                 tProb[r] = transition(trajectory[t], trajectory[t+1], R[r], L[l], R_links[r], L_links[l], params)
-                # print ("Link Index", linkIdx)
-                fProb[r] = tProb[r] * score[linkIdx[R_links[r].linkPVID]][t]
-
+                fProb[r] = float(tProb[r] * score[linkIdx[R_links[r].linkPVID],t])
+                # print("tProb", tProb[r])
+                # print("Score Matrix", score)
+                # print("Score Index", linkIdx[R_links[r].linkPVID], t)
+                # print("Score", score[linkIdx[R_links[r].linkPVID],t])
+                # print("fProb", fProb[r])
             maxr, maxri = np.max(fProb), np.argmax(fProb)
-            sequence[t] = R_links[maxri].linkPVID
             finalScore = emission(L[l], trajectory[t+1], params)*maxr
-            # Add state to the score matrix
+            # print("Max score", maxr)
+            # Add state to the score and backpointer matrix
             if (L_links[l].linkPVID not in linkIdx):
-                entry = np.zeros(T-1)
-                entry[t] = finalScore
-                score.append(entry)
-                linkIdx[L_links[l].linkPVID] = idx
-                idx += 1
+                score_entry = np.zeros((1,T), float)
+                score_entry[0, t+1] = finalScore
+                score = np.append(score, score_entry, axis = 0)
+                back_entry = np.zeros((1,T), int)
+                backpointers = np.append(backpointers, back_entry, axis = 0)
+                linkIdx[L_links[l].linkPVID] = (np.shape(score)[0])-1
             else:
-                score[linkIdx[L_links[l].linkPVID]][t] = finalScore
+                score[linkIdx[L_links[l].linkPVID], t+1] = finalScore
+
+            backpointers[linkIdx[L_links[l].linkPVID], t+1] = linkIdx[R_links[maxri].linkPVID]
 
         # Transfer next candidates to current candidates
         R = copy.deepcopy(L)
         R_links = copy.deepcopy(L_links)
-    return score, sequence
+
+    # Follow backpointers to resolve sequence
+    print("Score Matrix", score)
+    print ("Backpointers", backpointers)
+    sequence = []
+    sequence_idx = []
+    sequence_idx.append(np.argmax(score[:, T-1]))
+    sequence.append(getLinkID(linkIdx, sequence_idx[0]))
+    for i in range(T-1, 0, -1):
+        sequence_idx.append(backpointers[sequence_idx[-1], i])
+        sequence.append(getLinkID(linkIdx, sequence_idx[-1]))
+
+    return list(reversed(sequence)), np.max(score[:, T-1])
 
 if __name__ == "__main__":
     probe_csv = open("Partition6467ProbePoints.csv", "r")
@@ -223,7 +232,7 @@ if __name__ == "__main__":
 
     # make each probe row as object of class probe
     probe_obj = []
-    for i in range (950, 1000):
+    for i in range (1000, 1003):
         curr_obj = process_probe_point(probe_rows[i])
         probe_obj.append(curr_obj)
     print ("done making probe obj")
@@ -241,12 +250,12 @@ if __name__ == "__main__":
     print ("sorting dataTime")
 
     traj = make_trajectory(probe_obj) # dict of probe IDs and probe pts
+    print ("got traj")
     #TODO: sort probe pts by time
 
     probe_ids = deque() # queue list of all probe IDs
     for k in traj.keys():
         probe_ids.append(k)
-    print ("got traj")
     print ("probe ids:", probe_ids)
 
     while (probe_ids):
