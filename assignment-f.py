@@ -25,7 +25,6 @@ def get_closest_shape(probe, link):
 
 def get_dist_curvature(curvatureInfo, idx):
     curvature = curvatureInfo[idx-1]
-    # print (curvature[0])
     dist = float(curvature[0])
     return dist
 
@@ -52,12 +51,13 @@ def compute_curve_dist(link, candidate):
                 link.shapeInfo[idx][1])
         else:
             curve_dist = get_dist_curvature(link.curvatureInfo, idx)
+
         if (side == 1):
             curve_dist += delta
         else:
             curve_dist -= delta
             if (curve_dist < 0):
-                if (idx > 1):
+                if (idx > 1) and (link.curvatureInfo[0][0] !=  ''):
                     curve_dist = get_dist_curvature(link.curvatureInfo, idx-1)
                 else:
                     curve_dist = 0
@@ -154,7 +154,7 @@ def find_matched_params(probe,matched_link):
     # distance from the reference node to the map-matched probe point location on the link in decimal meters
 
     links = [matched_link]
-    candidates, link_results = get_candidate_nodes(probe, links, [], True, 500)
+    candidates, link_results = get_candidate_nodes(probe, links, [], True, 1000)
     candidate = candidates[0]
     distFromRef = compute_curve_dist(matched_link, candidate)
     distFromLink = candidate[2]
@@ -196,7 +196,7 @@ def MapMatchHMM(params, trajectory, links):
 
         while (len(R) == 0):
             # Loosen distance requirement
-            min_dist += 100
+            min_dist += 200
             print ("no candidates, trying", min_dist)
             R, R_links = get_candidate_nodes(trajectory[t], links, [], True, min_dist)
             if (min_dist > 500):
@@ -273,7 +273,7 @@ if __name__ == "__main__":
 
     # make each probe row as object of class probe
     probe_obj = []
-    for i in range (1000, 1010):
+    for i in range (1000, 1100):
         curr_obj = process_probe_point(probe_rows[i])
         probe_obj.append(curr_obj)
     print ("done making probe obj")
