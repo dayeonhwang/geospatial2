@@ -248,6 +248,8 @@ def MapMatchHMM(params, trajectory, links):
     # Follow backpointers to resolve sequence
     # print("Score Matrix", score)
     # print ("Backpointers", backpointers)
+    if (np.shape(score)[0] == 0):
+        return [], 0
     sequence = []
     sequence_idx = []
     sequence_idx.append(np.argmax(score[:, T-1]))
@@ -273,7 +275,7 @@ if __name__ == "__main__":
 
     # make each probe row as object of class probe
     probe_obj = []
-    for i in range (1000, 1100):
+    for i in range (0, 498):
         curr_obj = process_probe_point(probe_rows[i])
         probe_obj.append(curr_obj)
     print ("done making probe obj")
