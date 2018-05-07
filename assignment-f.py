@@ -273,13 +273,13 @@ if __name__ == "__main__":
     output_csv = open("Partition6467MatchedPoints.csv", "w")
     probe_reader = csv.reader(probe_csv)
     link_reader = csv.reader(link_csv)
-    writer = csv.writer(output_csv,lineterminator='\n')
+    writer = csv.writer(output_csv)
     probe_rows = list(probe_reader)
     link_rows = list(link_reader)
 
     # make each probe row as object of class probe
     probe_obj = []
-    for i in range (0, 5000):
+    for i in range (0, 5):
         curr_obj = process_probe_point(probe_rows[i])
         probe_obj.append(curr_obj)
     print ("done making probe obj")
@@ -305,16 +305,28 @@ if __name__ == "__main__":
 
     while (probe_ids):
         curr_id = probe_ids[0] # next probe ID to process
-        curr_probe = [p for p in probe_obj if p.sampleID==curr_id][0] # finding probe with next probe ID
+        probe_traj = traj[curr_id] # all probe pts with same ID
+        curr_probe = probe_traj[0]
         probe_ids.popleft()
         print ("current probe being processed: ")
         pprint(vars(curr_probe))
 
-        probe_traj = traj[curr_probe.sampleID] # all probe pts with same ID
         params = Params(4.07, 10)
         print ("starting HMM with", curr_id)
         sequence, prob = MapMatchHMM(params, probe_traj, link_obj)
         print ("sequence", sequence)
         print ("probability", prob)
+        for i in range (0, len(sequence)):
+            distFromRef1, distFromLink1, shape_idx1 = find_dist_from_ref_from_link(curr_probe,sequence[i]) # current link
+            distFromRef2, distFromLink2, shape_idx2 = find_dist_from_ref_from_link(curr_probe,sequence[i+1]) # next link
+            if i+1 == len(sequence):
+                curr_probe.direction = sequence[i].directionOfTravel
+            else:
+                curr_probe.direction = find_direction(sequence[i], sequence[i+1], shape_idx1, shape_idx2)
+
+            curr_probe.linkPVID = sequence[i].linkPVID
+            curr_probe.distFromRef = distFromRef
+            curr_probe.distFromLink = distFromLink
+            writer.writerows(curr_probe)
 
     print ("End Time", datetime.now().time())

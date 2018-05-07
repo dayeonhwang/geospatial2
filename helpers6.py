@@ -16,6 +16,10 @@ class Probe:
         self.altitude = altitude
         self.speed = speed
         self.heading = heading
+        self.linkPVID = 0
+        self.direction = 'B'
+        self.distFromRef = 0
+        self.distFromLink = 0
 
 class Link:
     def __init__(self, linkPVID, refNodeID, nrefNodeID, length, directionOfTravel, shapeInfo, curvatureInfo, slopeInfo):
@@ -102,7 +106,7 @@ def get_candidate_nodes(probe,link_lst, prev_lst, first = True):
             candidate = [link.linkPVID, min_shape_idx, pt1[0], pt1[1], height]
             candidates.append(candidate)
             links.append(link)
-            
+
     return candidates, links
 
 # convert time string (e.g. "6/12/2009  6:12:49 AM) to miliseconds
@@ -114,7 +118,7 @@ def compute_probe_time(raw_time):
 def process_probe_point(probe_pt):
     probe_obj = Probe(int(probe_pt[0]), compute_probe_time(probe_pt[1]),
         int(probe_pt[2]), float(probe_pt[3]), float(probe_pt[4]),
-        int(probe_pt[5]), int(probe_pt[6]), int(probe_pt[7]))
+        int(probe_pt[5]), int(probe_pt[6]), int(probe_pt[7], ))
     return probe_obj
 
 def process_link(link):
@@ -146,7 +150,7 @@ def derive_road_slope(probe1, probe2):
     probe_alt1 = probe1.altitude
     probe_alt2 = probe2.altitude
     dist = compute_great_circle_distance(probe1.latitude, probe1.longitude, probe2.latitude, probe2.longitude)
-    derived_slope = abs(probe_alt1 - probe_alt2)/dist
+    derived_slope = math.abs(probe_alt1 - probe_alt2)/dist
 
     return derived_slope
 
