@@ -44,7 +44,7 @@ def compute_great_circle_distance(lat1, lon1, lat2, lon2):
     return great_circle(p1,p2).meters
 
 #get candidate link nodes that are within 200 meters distance of probe point
-def get_candidate_nodes(probe,link_lst, prev_lst, first = True):
+def get_candidate_nodes(probe,link_lst, prev_lst, first = True, min_dist_thresh = 200):
     candidates = []
     links = []
 
@@ -67,7 +67,7 @@ def get_candidate_nodes(probe,link_lst, prev_lst, first = True):
         distances = []
         min_shape_idx = 0
         min_shape_idx2 = 0
-        min_distance = 200
+        min_distance = min_dist_thresh
         within_range = False
         # Find shape point closest to probe point
         for j in range(0, len(link.shapeInfo)):
@@ -75,7 +75,7 @@ def get_candidate_nodes(probe,link_lst, prev_lst, first = True):
             ref_lat = float(ref[0])
             ref_lon = float(ref[1])
             distances.append(compute_great_circle_distance(probe.latitude,probe.longitude,ref_lat,ref_lon))
-            if (distances[j]  <= 200):
+            if (distances[j]  <= min_dist_thresh):
                 within_range = True
                 if (distances[j] < min_distance):
                     min_distance = distances[j]

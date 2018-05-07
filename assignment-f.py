@@ -180,6 +180,7 @@ def find_dist_from_ref_from_link(probe,matched_link):
     return compute_curve_dist(link, shape_idx), height, shape_idx
 
 def MapMatchHMM(params, trajectory, links):
+    min_dist = 200
     T = len(trajectory)
     # Create matrix that stores joint probability up to that state (states x time)
     score = np.empty((0,T), float)
@@ -187,6 +188,8 @@ def MapMatchHMM(params, trajectory, links):
     backpointers = np.empty((0,T), int)
     # Create index dictionary for road links in score matrix
     linkIdx = {}
+    # Create running list of total possible_links whose indices correspond to linkIdx
+    candidate_links = []
 
     # Initialize current candidates list
     R = []
@@ -209,9 +212,13 @@ def MapMatchHMM(params, trajectory, links):
         # print ("L_links", L_links_IDs)
 
 
-        if len(R) == 0:
-            print ("no candidates")
-            return [], 0
+        while (len(R) == 0):
+            # Loosen distance requirement
+            min_dist += 100
+            print ("no candidates, trying", min_dist)
+            R, R_links = get_candidate_nodes(trajectory[t], links, [], True, min_dist)
+            if (min_dist > 500):
+                break
         for l in range(0, len(L)):
             eProb = emission(L[l], trajectory[t+1], params)
             tProb = np.zeros(len(R))
@@ -225,7 +232,7 @@ def MapMatchHMM(params, trajectory, links):
                     back_entry = np.zeros((1,T), int)
                     backpointers = np.append(backpointers, back_entry, axis = 0)
                     linkIdx[R_links[r].linkPVID] = (np.shape(score)[0])-1
-
+                    candidate_links.append(R_links[r])
                 tProb[r] = transition(trajectory[t], trajectory[t+1], R[r], L[l], R_links[r], L_links[l], params)
                 fProb[r] = float(tProb[r] * score[linkIdx[R_links[r].linkPVID],t])
                 # print("tProb", tProb[r])
@@ -244,6 +251,7 @@ def MapMatchHMM(params, trajectory, links):
                 back_entry = np.zeros((1,T), int)
                 backpointers = np.append(backpointers, back_entry, axis = 0)
                 linkIdx[L_links[l].linkPVID] = (np.shape(score)[0])-1
+                candidate_links.append(L_links[l])
             else:
                 score[linkIdx[L_links[l].linkPVID], t+1] = finalScore
 
@@ -253,16 +261,18 @@ def MapMatchHMM(params, trajectory, links):
         R = copy.deepcopy(L)
         R_links = copy.deepcopy(L_links)
 
+    print ("Length of candidates_links", len(candidate_links))
+    print ("Length of score matrix", np.shape(score)[0])
     # Follow backpointers to resolve sequence
     # print("Score Matrix", score)
     # print ("Backpointers", backpointers)
     sequence = []
     sequence_idx = []
     sequence_idx.append(np.argmax(score[:, T-1]))
-    sequence.append(getLinkID(linkIdx, sequence_idx[0]))
+    sequence.append(candidate_links[sequence_idx[0]])
     for i in range(T-1, 0, -1):
         sequence_idx.append(backpointers[sequence_idx[-1], i])
-        sequence.append(getLinkID(linkIdx, sequence_idx[-1]))
+        sequence.append(candidate_links[sequence_idx[-1]])
 
     return list(reversed(sequence)), np.max(score[:, T-1])
 
@@ -314,7 +324,9 @@ if __name__ == "__main__":
         params = Params(4.07, 10)
         print ("starting HMM with", curr_id)
         sequence, prob = MapMatchHMM(params, probe_traj, link_obj)
-        print ("sequence", sequence)
+        print ("Sequence")
+        for link in sequence:
+            pprint(vars(link))
         print ("probability", prob)
         for i in range (0, len(sequence)):
             distFromRef1, distFromLink1, shape_idx1 = find_dist_from_ref_from_link(curr_probe,sequence[i]) # current link
