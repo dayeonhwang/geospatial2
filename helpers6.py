@@ -102,6 +102,7 @@ def get_candidate_nodes(probe,link_lst, prev_lst, first = True):
             candidate = [link.linkPVID, min_shape_idx, pt1[0], pt1[1], height]
             candidates.append(candidate)
             links.append(link)
+            
     return candidates, links
 
 # convert time string (e.g. "6/12/2009  6:12:49 AM) to miliseconds
@@ -160,3 +161,7 @@ def make_trajectory(probe_obj):
         else:
             trajectory[currID] = [probe_obj[i]]
     return trajectory
+
+# return a trajectory of probe data which has same probe ID
+def get_trajectory(traj,probe_id):
+    return traj[probe_id]
