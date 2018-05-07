@@ -143,6 +143,7 @@ def find_dist_from_ref_from_link(probe,matched_link):
     distances = []
     min_shape_idx = 0
     min_shape_idx2 = 0
+    min_distance = 200
 
     # Find shape point closest to probe point
     for j in range(0, len(link.shapeInfo)):
@@ -289,7 +290,7 @@ if __name__ == "__main__":
 
     # make each probe row as object of class probe
     probe_obj = []
-    for i in range (0, 5):
+    for i in range (0, 50):
         curr_obj = process_probe_point(probe_rows[i])
         probe_obj.append(curr_obj)
     print ("done making probe obj")
@@ -316,29 +317,48 @@ if __name__ == "__main__":
     while (probe_ids):
         curr_id = probe_ids[0] # next probe ID to process
         probe_traj = traj[curr_id] # all probe pts with same ID
-        curr_probe = probe_traj[0]
+        first_probe = probe_traj[0]
         probe_ids.popleft()
-        print ("current probe being processed: ")
-        pprint(vars(curr_probe))
+        print ("First probe being processed: ")
+        pprint(vars(first_probe))
 
-        params = Params(4.07, 10)
+        params = Params(4.07, 20)
         print ("starting HMM with", curr_id)
         sequence, prob = MapMatchHMM(params, probe_traj, link_obj)
         print ("Sequence")
-        for link in sequence:
-            pprint(vars(link))
-        print ("probability", prob)
+        shape_idx1 = 0
+        distFromRef1 = 0.0
+        distFromLink1 = 0.0
         for i in range (0, len(sequence)):
-            distFromRef1, distFromLink1, shape_idx1 = find_dist_from_ref_from_link(curr_probe,sequence[i]) # current link
-            distFromRef2, distFromLink2, shape_idx2 = find_dist_from_ref_from_link(curr_probe,sequence[i+1]) # next link
-            if i+1 == len(sequence):
+            link1 = sequence[i]
+            pprint(vars(link1))
+            if (i+1 == len(sequence)):
+                link2 = sequence[i]
+            else:
+                link2 = sequence[i+1]
+
+            curr_probe = probe_traj[i]
+            if (i == 0):
+                distFromRef1, distFromLink1, shape_idx1 = find_dist_from_ref_from_link(curr_probe,link1) # current link
+            if (i != len(sequence)-1):
+                # Don't need to compute parameters for next link when already at the end
+                distFromRef2, distFromLink2, shape_idx2 = find_dist_from_ref_from_link(curr_probe,link2) # next link
+
+            if (sequence[i].directionOfTravel != 'B'):
                 curr_probe.direction = sequence[i].directionOfTravel
             else:
-                curr_probe.direction = find_direction(sequence[i], sequence[i+1], shape_idx1, shape_idx2)
+                if (i+1 == len(sequence))
+                    curr_probe.direction = probe_traj[i-1].direction
+                else:
+                    curr_probe.direction = find_direction(link1, link2, shape_idx1, shape_idx2)
 
-            curr_probe.linkPVID = sequence[i].linkPVID
-            curr_probe.distFromRef = distFromRef
-            curr_probe.distFromLink = distFromLink
-            writer.writerows(curr_probe)
-
+            curr_probe.linkPVID = link1.linkPVID
+            curr_probe.distFromRef = distFromRef1
+            curr_probe.distFromLink = distFromLink1
+            # Update the current probe parameters
+            shape_idx1 = shape_idx2
+            distFromRef1 = distFromRef2
+            distFromLink1 = distFromLink2
+            probe_traj[i] = curr_probe
+        print ("Probability", prob)
     print ("End Time", datetime.now().time())
