@@ -67,14 +67,29 @@ def transition(probe1, probe2, candidate1, candidate2, link1, link2, params):
 
     # Check if it is along the same link
     if (link1.linkPVID == link2.linkPVID):
-        dist2 = math.fabs(curve_dist2 - curve_dist1)
+        raw_dist = curve_dist2 - curve_dist1
+        if (raw_dist < 0):
+            # To the reference node
+            if (link1.directionOfTravel == 'F'):
+                return 0
+            raw_dist *= -1
+        else:
+            # From the reference node
+            if (link1.directionOfTravel == 'T'):
+                return 0
+
+        dist2 = raw_dist
 
     else:
         if link1.nrefNodeID == link2.refNodeID:
             # traveling link1 -> link2
+            if (link1.directionOfTravel == 'T'):
+                return 0
             dist2 = (link1.length - curve_dist1) + curve_dist2
         elif link1.refNodeID == link2.nrefNodeID:
             # traveling link2 -> link1
+            if (link1.directionOfTravel = 'F'):
+                return 0
             dist2 = (link2.length - curve_dist2) + curve_dist1
         else:
             notFound = True
