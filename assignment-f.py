@@ -4,6 +4,7 @@ import math
 from helpers6 import *
 from pprint import pprint
 from collections import deque
+import time
 
 def getLinkID(linkIdx, idx):
     for key, value in linkIdx.items():
@@ -294,7 +295,7 @@ if __name__ == "__main__":
         probe_obj.append(curr_obj)
     print ("done making probe obj")
 
-    # make each link row as object of class link
+    #make each link row as object of class link
     link_obj = []
     for i in range (0, len(link_rows)):
         curr_obj = process_link(link_rows[i])
@@ -339,6 +340,13 @@ if __name__ == "__main__":
             curr_probe.linkPVID = sequence[i].linkPVID
             curr_probe.distFromRef = distFromRef
             curr_probe.distFromLink = distFromLink
-            writer.writerows(curr_probe)
+            row = []
+            for attr, value in curr_probe.__dict__.items():
+                if (attr == 'dateTime'):
+                    time_str = time.strftime('%m/%d/%Y  %I:%M:%S %p', time.gmtime(value/1000.0))
+                    row.append(time_str)
+                else:
+                    row.append(value)
+            writer.writerow(row)
 
     print ("End Time", datetime.now().time())
