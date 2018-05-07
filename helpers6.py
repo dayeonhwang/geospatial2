@@ -149,15 +149,14 @@ def derive_road_slope(probe1, probe2):
 
     return derived_slope
 
-# return a trajectory of probe data which has same probe ID
-def get_trajectory(probe_obj):
+# make trajectory dict {probe_id: list of probe points}
+def make_trajectory(probe_obj):
     trajectory = {} # {probe ID: list of probe points}
     currID = probe_obj[0].sampleID
     for i in range(0,len(probe_obj)):
-        if currID in trajectory: # same key
-            if probe_obj[i].sampleID==currID:
-                trajectory[currID].append(probe_obj[i])
+        currID = probe_obj[i].sampleID
+        if currID in trajectory:
+            trajectory[currID].append(probe_obj[i])
         else:
-            currID = probe_obj[i].sampleID
             trajectory[currID] = [probe_obj[i]]
     return trajectory
