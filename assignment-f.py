@@ -263,15 +263,17 @@ if __name__ == "__main__":
     probe_csv = open("Partition6467ProbePoints.csv", "r")
     link_csv = open("Partition6467LinkData.csv", "r")
     output_csv = open("Partition6467MatchedPoints.csv", "a")
+    slope_csv = open("Partition6467SlopeData.csv", "a")
     probe_reader = csv.reader(probe_csv)
     link_reader = csv.reader(link_csv)
     writer = csv.writer(output_csv)
+    slope_writer = csv.writer(slope_csv)
     probe_rows = list(probe_reader)
     link_rows = list(link_reader)
 
     # make each probe row as object of class probe
     probe_obj = []
-    for i in range (0, 50):
+    for i in range (1000, 1010):
         curr_obj = process_probe_point(probe_rows[i])
         probe_obj.append(curr_obj)
     print ("done making probe obj")
@@ -282,6 +284,10 @@ if __name__ == "__main__":
         curr_obj = process_link(link_rows[i])
         link_obj.append(curr_obj)
     print ("done making link_obj")
+
+    #make a running list of links that have derived slopes computed
+    link_slopes = []
+    link_slope_idx = {}
 
     #unsorted_probe_obj = copy.deepcopy(probe_obj)
     probe_obj.sort(key=lambda x: x.dateTime)
@@ -319,19 +325,36 @@ if __name__ == "__main__":
                 link2 = sequence[i+1]
 
             curr_probe = probe_traj[i]
+            # Determine distance from reference node and distance from link
             if (i == 0):
                 distFromRef1, distFromLink1, candidate1 = find_matched_params(curr_probe,link1) # current link
             if (i != len(sequence)-1):
                 # Don't need to compute parameters for next link when already at the end
                 distFromRef2, distFromLink2, candidate2 = find_matched_params(curr_probe,link2) # next link
 
+            # Determine direction of travel of probe
             if (sequence[i].directionOfTravel != 'B'):
                 curr_probe.direction = sequence[i].directionOfTravel
             else:
-                if (i+1 == len(sequence)):
+                if (i == len(sequence)-1):
                     curr_probe.direction = probe_traj[i-1].direction
                 else:
                     curr_probe.direction = find_direction(link1, link2, candidate1, candidate2)
+
+            # Derive the slope if link ID is the same
+            if (link1.linkPVID == link2.linkPVID and i != len(sequence)-1):
+                # Check if its a new link in the running list
+                if link1.linkPVID not in link_slope_idx:
+                    matching_links = [x for x in link_obj if (x.linkPVID == link1.linkPVID)]
+                    matching_link = matching_links[0]
+                    link_slopes.append(matching_link)
+                    link_slope_idx[link1.linkPVID] = len(link_slopes)-1
+                slope = derive_road_slope(curr_probe, probe_traj[i+1])
+                previous_avg = link_slopes[link_slope_idx[link1.linkPVID]].derivedSlope
+                n = link_slopes[link_slope_idx[link1.linkPVID]].numDerivedSlopes
+                new_avg = (slope + (n * previous_avg))/(n+1)
+                link_slopes[link_slope_idx[link1.linkPVID]].derivedSlope = new_avg
+                link_slopes[link_slope_idx[link1.linkPVID]].numDerivedSlopes = n + 1
 
             curr_probe.linkPVID = link1.linkPVID
             curr_probe.distFromRef = distFromRef1
@@ -350,4 +373,26 @@ if __name__ == "__main__":
                     row.append(value)
             writer.writerow(row)
         print ("Probability", prob)
+
+    print ("Processing derived slopes")
+    # Process links with derived slopes
+    for i in range(0, len(link_slopes)):
+        link_slope = link_slopes[i]
+        avg_slope_info = 0.0
+        # Skip links without slope info
+        if (link_slope.slopeInfo[0][0] == ''):
+            continue
+        # Compute average slopeInfo
+        for j in range(0, len(link_slope.slopeInfo)):
+            avg_slope_info = (float(link_slope.slopeInfo[j][1]) + j*avg_slope_info)/(j+1)
+        # Compute absolute difference
+        link_slope.absoluteDiff = math.fabs(avg_slope_info - link_slope.derivedSlope)
+        # Compute relative error
+        link_slope.percentDiff = link_slope.absoluteDiff/avg_slope_info
+        row = []
+        for attr, value in link_slope.__dict__.items():
+            if (attr == 'linkPVID') or (attr == 'derivedSlope') or (attr == 'absoluteDiff') or (attr == 'percentDiff'):
+                row.append(value)
+        slope_writer.writerow(row)
+
     print ("End Time", datetime.now().time())

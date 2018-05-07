@@ -32,6 +32,8 @@ class Link:
         self.curvatureInfo = curvatureInfo
         self.slopeInfo = slopeInfo
         self.derivedSlope = 0.0
+        self.numDerivedSlopes = 0
+        self.absoluteDiff = 0.0
         self.percentDiff = 0.0
 
 class Params:
@@ -163,7 +165,7 @@ def derive_road_slope(probe1, probe2):
     probe_alt1 = probe1.altitude
     probe_alt2 = probe2.altitude
     dist = compute_great_circle_distance(probe1.latitude, probe1.longitude, probe2.latitude, probe2.longitude)
-    derived_slope = math.abs(probe_alt1 - probe_alt2)/dist
+    derived_slope = math.fabs(probe_alt1 - probe_alt2)/dist
 
     return derived_slope
 
