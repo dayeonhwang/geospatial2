@@ -69,32 +69,32 @@ def transition(probe1, probe2, candidate1, candidate2, link1, link2, params):
 
     # Check if it is along the same link
     if (link1.linkPVID == link2.linkPVID):
-        raw_dist = curve_dist2 - curve_dist1
-        if (raw_dist < 0):
-            # To the reference node
-            if (link1.directionOfTravel == 'F'):
-                return 0
-            raw_dist *= -1
-        else:
-            # From the reference node
-            if (link1.directionOfTravel == 'T'):
-                return 0
+        # raw_dist = curve_dist2 - curve_dist1
+        # if (raw_dist < 0):
+        #     # To the reference node
+        #     if (link1.directionOfTravel == 'F'):
+        #         return 0
+        #     raw_dist *= -1
+        # else:
+        #     # From the reference node
+        #     if (link1.directionOfTravel == 'T'):
+        #         return 0
 
-        dist2 = raw_dist
-
+        # dist2 = raw_dist
+        dist2 = math.fabs(curve_dist2 - curve_dist1)
     else:
         if link1.nrefNodeID == link2.refNodeID:
             # traveling link1 -> link2
-            if (link1.directionOfTravel == 'T'):
-                return 0
+            # if (link1.directionOfTravel == 'T'):
+            #     return 0
             dist2 = (link1.length - curve_dist1) + curve_dist2
             direction = 'F'
         elif link1.refNodeID == link2.nrefNodeID:
             # traveling link2 -> link1
-            if (link1.directionOfTravel = 'F'):
-                return 0
+            # if (link1.directionOfTravel == 'F'):
+            #     return 0
             dist2 = (link2.length - curve_dist2) + curve_dist1
-            direction = 'T'
+            #direction = 'T'
         else:
             notFound = True
 
@@ -139,15 +139,53 @@ def find_direction(link1, link2, candidate1, candidate2):
 
     return direction
 
-def find_dist_from_ref(probe, link):
+def find_dist_from_ref_from_link(probe,matched_link):
     # distance from the reference node to the map-matched probe point location on the link in decimal meters
-    ref = (link.shapeInfo).split('|')[0].split('/')
-    dist = compute_great_circle_distance(probe.latitude, probe.longitude, lat2, lon2)
-    return dist
 
-def find_dist_from_link(probe,link):
-    # perpendicular distance from the map-matched probe point location on the link to the probe point in decimal meters
+    link = matched_link
+    distances = []
+    min_shape_idx = 0
+    min_shape_idx2 = 0
+    min_distance = 200
+    within_range = False
+    # Find shape point closest to probe point
+    for j in range(0, len(link.shapeInfo)):
+        ref = link.shapeInfo[j][:]
+        ref_lat = float(ref[0])
+        ref_lon = float(ref[1])
+        distances.append(compute_great_circle_distance(probe.latitude,probe.longitude,ref_lat,ref_lon))
+        if (distances[j]  <= 200):
+            within_range = True
+            if (distances[j] < min_distance):
+                min_distance = distances[j]
+                min_shape_idx = j
 
+    # Compute closest point on link to probe point
+    if (within_range):
+        # Find second closest shape point
+        if (min_shape_idx > 0 and min_shape_idx < len(link.shapeInfo)-1):
+            if (distances[min_shape_idx - 1] < distances[min_shape_idx + 1]):
+                min_shape_idx2 = min_shape_idx - 1
+            else:
+                min_shape_idx2 = min_shape_idx + 1
+        elif (min_shape_idx == 0):
+            min_shape_idx2 = min_shape_idx + 1
+        elif (min_shape_idx == len(link.shapeInfo)):
+            min_shape_idx2 = min_shape_idx - 1
+        # Use Heron's formula to compute area
+        pt1 = link.shapeInfo[min_shape_idx][:]
+        pt2 = link.shapeInfo[min_shape_idx2][:]
+        dist1p = compute_great_circle_distance(probe.latitude, probe.longitude, float(pt1[0]), float(pt1[1]))
+        dist2p = compute_great_circle_distance(probe.latitude, probe.longitude, float(pt2[0]), float(pt2[1]))
+        dist12 = compute_great_circle_distance(pt1[0],pt1[1],pt2[0],pt2[1])
+        S = (dist1p + dist2p + dist12)/2.0
+        A = math.sqrt(S*(S-dist1p)*(S-dist2p)*(S-dist12))
+        # Calculate altitude from probe point using computed compute_great_circle_distance
+        height = 2*A/dist12
+        candidate = [link.linkPVID, min_shape_idx, pt1[0], pt1[1], height]
+            
+    shape_idx = candidate[1]
+    return compute_curve_dist(link, shape_idx), candidate[4]
 
 def MapMatchHMM(params, trajectory, links):
     T = len(trajectory)
@@ -247,7 +285,7 @@ if __name__ == "__main__":
 
     # make each probe row as object of class probe
     probe_obj = []
-    for i in range (1000, 1003):
+    for i in range (950, 1000):
         curr_obj = process_probe_point(probe_rows[i])
         probe_obj.append(curr_obj)
     print ("done making probe obj")
@@ -260,13 +298,11 @@ if __name__ == "__main__":
     print ("done making link_obj")
 
     #unsorted_probe_obj = copy.deepcopy(probe_obj)
-    #probe_obj.sort(key=lambda x: x.dateTime)
-    first_probe = probe_obj[0]
+    probe_obj.sort(key=lambda x: x.dateTime)
     print ("sorting dataTime")
 
     traj = make_trajectory(probe_obj) # dict of probe IDs and probe pts
     print ("got traj")
-    #TODO: sort probe pts by time
 
     probe_ids = deque() # queue list of all probe IDs
     for k in traj.keys():
@@ -286,3 +322,5 @@ if __name__ == "__main__":
         scores, sequences = MapMatchHMM(params, probe_traj, link_obj)
         print ("scores", scores)
         print ("sequences", sequences)
+
+        
