@@ -106,10 +106,8 @@ def transition(probe1, probe2, candidate1, candidate2, link1, link2, params):
         # print("Beta", beta)
         return (1/params.beta)*math.exp(-dist/params.beta)
 
-def find_direction(link1, link2, candidate1, candidate2):
+def find_direction(link1, link2, shape_idx1, shape_idx2):
     # F = from ref node, T = towards ref node
-    shape_idx1 = candidate1[1]
-    shape_idx2 = candidate2[1]
 
     curve_dist1 = compute_curve_dist(link1, shape_idx1)
     curve_dist2 = compute_curve_dist(link2, shape_idx2)
@@ -140,57 +138,46 @@ def find_direction(link1, link2, candidate1, candidate2):
 
 def find_dist_from_ref_from_link(probe,matched_link):
     # distance from the reference node to the map-matched probe point location on the link in decimal meters
-    ref = (link.shapeInfo).split('|')[0].split('/')
-    dist = compute_great_circle_distance(probe.latitude, probe.longitude, lat2, lon2)
-    return dist
-
-# def find_dist_from_link(probe,link):
-    # perpendicular distance from the map-matched probe point location on the link to the probe point in decimal meters
 
     link = matched_link
     distances = []
     min_shape_idx = 0
     min_shape_idx2 = 0
-    min_distance = 200
-    within_range = False
+
     # Find shape point closest to probe point
     for j in range(0, len(link.shapeInfo)):
         ref = link.shapeInfo[j][:]
         ref_lat = float(ref[0])
         ref_lon = float(ref[1])
         distances.append(compute_great_circle_distance(probe.latitude,probe.longitude,ref_lat,ref_lon))
-        if (distances[j]  <= 200):
-            within_range = True
-            if (distances[j] < min_distance):
-                min_distance = distances[j]
-                min_shape_idx = j
+        if (distances[j] < min_distance):
+            min_distance = distances[j]
+            min_shape_idx = j
 
     # Compute closest point on link to probe point
-    if (within_range):
-        # Find second closest shape point
-        if (min_shape_idx > 0 and min_shape_idx < len(link.shapeInfo)-1):
-            if (distances[min_shape_idx - 1] < distances[min_shape_idx + 1]):
-                min_shape_idx2 = min_shape_idx - 1
-            else:
-                min_shape_idx2 = min_shape_idx + 1
-        elif (min_shape_idx == 0):
-            min_shape_idx2 = min_shape_idx + 1
-        elif (min_shape_idx == len(link.shapeInfo)):
+    # Find second closest shape point
+    if (min_shape_idx > 0 and min_shape_idx < len(link.shapeInfo)-1):
+        if (distances[min_shape_idx - 1] < distances[min_shape_idx + 1]):
             min_shape_idx2 = min_shape_idx - 1
-        # Use Heron's formula to compute area
-        pt1 = link.shapeInfo[min_shape_idx][:]
-        pt2 = link.shapeInfo[min_shape_idx2][:]
-        dist1p = compute_great_circle_distance(probe.latitude, probe.longitude, float(pt1[0]), float(pt1[1]))
-        dist2p = compute_great_circle_distance(probe.latitude, probe.longitude, float(pt2[0]), float(pt2[1]))
-        dist12 = compute_great_circle_distance(pt1[0],pt1[1],pt2[0],pt2[1])
-        S = (dist1p + dist2p + dist12)/2.0
-        A = math.sqrt(S*(S-dist1p)*(S-dist2p)*(S-dist12))
-        # Calculate altitude from probe point using computed compute_great_circle_distance
-        height = 2*A/dist12
-        candidate = [link.linkPVID, min_shape_idx, pt1[0], pt1[1], height]
+        else:
+            min_shape_idx2 = min_shape_idx + 1
+    elif (min_shape_idx == 0):
+        min_shape_idx2 = min_shape_idx + 1
+    elif (min_shape_idx == len(link.shapeInfo)):
+        min_shape_idx2 = min_shape_idx - 1
+    # Use Heron's formula to compute area
+    pt1 = link.shapeInfo[min_shape_idx][:]
+    pt2 = link.shapeInfo[min_shape_idx2][:]
+    dist1p = compute_great_circle_distance(probe.latitude, probe.longitude, float(pt1[0]), float(pt1[1]))
+    dist2p = compute_great_circle_distance(probe.latitude, probe.longitude, float(pt2[0]), float(pt2[1]))
+    dist12 = compute_great_circle_distance(pt1[0],pt1[1],pt2[0],pt2[1])
+    S = (dist1p + dist2p + dist12)/2.0
+    A = math.sqrt(S*(S-dist1p)*(S-dist2p)*(S-dist12))
+    # Calculate altitude from probe point using computed compute_great_circle_distance
+    height = 2*A/dist12
+    shape_idx = min_shape_idx
 
-    shape_idx = candidate[1]
-    return compute_curve_dist(link, shape_idx), candidate[4]
+    return compute_curve_dist(link, shape_idx), height, shape_idx
 
 def MapMatchHMM(params, trajectory, links):
     T = len(trajectory)
